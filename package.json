@@ -1,0 +1,106 @@
+{
+  "name": "vscode-elm-lsp",
+  "displayName": "Elm LSP",
+  "description": "Elm language support powered by elm-lsp-rust",
+  "version": "0.1.0",
+  "publisher": "CharlonTank",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CharlonTank/elm-lsp-rust"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "elm",
+    "language-server",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:elm",
+    "workspaceContains:**/elm.json"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "elm",
+        "aliases": [
+          "Elm",
+          "elm"
+        ],
+        "extensions": [
+          ".elm"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "elm",
+        "scopeName": "source.elm",
+        "path": "./syntaxes/elm.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Elm LSP",
+      "properties": {
+        "elm-lsp.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to elm_lsp binary. Leave empty to auto-download or use bundled version."
+        },
+        "elm-lsp.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the Elm language server."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "elm-lsp.restartServer",
+        "title": "Elm: Restart Language Server"
+      },
+      {
+        "command": "elm-lsp.moveFunction",
+        "title": "Elm: Move Function to Module"
+      },
+      {
+        "command": "elm-lsp.generateErd",
+        "title": "Elm: Generate ER Diagram"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
