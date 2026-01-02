@@ -12,6 +12,7 @@ import {
 
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
+let isRestarting = false;
 
 const GITHUB_REPO = 'CharlonTank/elm-lsp-rust';
 const BINARY_NAME = process.platform === 'win32' ? 'elm_lsp.exe' : 'elm_lsp';
@@ -161,6 +162,16 @@ async function startLanguageClient(context: vscode.ExtensionContext, serverPath:
             fileEvents: vscode.workspace.createFileSystemWatcher('**/*.elm')
         },
         outputChannel,
+        errorHandler: {
+            error: (error, message, count) => {
+                outputChannel?.appendLine(`LSP Error: ${error.message}`);
+                return { action: 1 }; // Continue
+            },
+            closed: () => {
+                outputChannel?.appendLine('LSP connection closed unexpectedly');
+                return { action: 2 }; // DoNotRestart - let user manually restart
+            }
+        }
     };
 
     client = new LanguageClient(
@@ -206,15 +217,95 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
     }
 
+    // Handle Elm file renames/moves - update module declarations and imports
+    context.subscriptions.push(
+        vscode.workspace.onWillRenameFiles((event) => {
+            const elmFiles = event.files.filter(
+                f => f.oldUri.fsPath.endsWith('.elm') && f.newUri.fsPath.endsWith('.elm')
+            );
+
+            if (elmFiles.length === 0 || !client) return;
+
+            event.waitUntil((async () => {
+                const workspaceEdit = new vscode.WorkspaceEdit();
+
+                for (const file of elmFiles) {
+                    const oldDir = path.dirname(file.oldUri.fsPath);
+                    const newDir = path.dirname(file.newUri.fsPath);
+                    const newName = path.basename(file.newUri.fsPath);
+
+                    try {
+                        let result: any;
+
+                        if (oldDir === newDir) {
+                            // Same directory = rename
+                            result = await client!.sendRequest('workspace/executeCommand', {
+                                command: 'elm.renameFile',
+                                arguments: [file.oldUri.toString(), newName]
+                            });
+                        } else {
+                            // Different directory = move
+                            const workspaceFolder = vscode.workspace.getWorkspaceFolder(file.oldUri);
+                            const relativePath = workspaceFolder
+                                ? path.relative(workspaceFolder.uri.fsPath, file.newUri.fsPath)
+                                : file.newUri.fsPath;
+
+                            result = await client!.sendRequest('workspace/executeCommand', {
+                                command: 'elm.moveFile',
+                                arguments: [file.oldUri.toString(), relativePath]
+                            });
+                        }
+
+                        if (result?.success && result?.changes) {
+                            for (const [uriStr, edits] of Object.entries(result.changes)) {
+                                const uri = vscode.Uri.parse(uriStr);
+                                for (const edit of edits as any[]) {
+                                    const range = new vscode.Range(
+                                        edit.range.start.line,
+                                        edit.range.start.character,
+                                        edit.range.end.line,
+                                        edit.range.end.character
+                                    );
+                                    workspaceEdit.replace(uri, range, edit.newText);
+                                }
+                            }
+                        }
+
+                        if (result?.success) {
+                            outputChannel?.appendLine(
+                                `Elm: ${result.oldModuleName} → ${result.newModuleName} (${result.filesUpdated} files updated)`
+                            );
+                        } else if (result?.error) {
+                            vscode.window.showWarningMessage(`Elm move/rename: ${result.error}`);
+                        }
+                    } catch (e) {
+                        outputChannel?.appendLine(`Elm file rename error: ${e}`);
+                    }
+                }
+
+                return workspaceEdit;
+            })());
+        })
+    );
+
     context.subscriptions.push(
         vscode.commands.registerCommand('elm-lsp.restartServer', async () => {
-            if (client) {
-                await client.stop();
+            if (isRestarting) {
+                vscode.window.showWarningMessage('Elm LSP is already restarting...');
+                return;
             }
-            const newPath = await findServerBinary(context);
-            if (newPath) {
-                await startLanguageClient(context, newPath);
-                vscode.window.showInformationMessage('Elm LSP restarted');
+            isRestarting = true;
+            try {
+                if (client) {
+                    await client.stop();
+                }
+                const newPath = await findServerBinary(context);
+                if (newPath) {
+                    await startLanguageClient(context, newPath);
+                    vscode.window.showInformationMessage('Elm LSP restarted');
+                }
+            } finally {
+                isRestarting = false;
             }
         })
     );

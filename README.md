@@ -23,7 +23,7 @@ Elm language support powered by [elm-lsp-rust](https://github.com/CharlonTank/el
 
 ### From VS Code Marketplace
 
-Coming soon.
+Search for "Elm LSP" by CharlonTank in the Extensions view.
 
 ### From Source (Development)
 
