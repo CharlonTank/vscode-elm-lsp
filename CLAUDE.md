@@ -2,6 +2,14 @@
 
 VS Code extension for Elm language support using elm-lsp-rust.
 
+## IMPORTANT: After Every Update
+
+**Always install the extension locally after making changes:**
+
+```bash
+npm run package && cursor --install-extension vscode-elm-lsp-*.vsix
+```
+
 ## Development
 
 ```bash
@@ -42,6 +50,13 @@ The extension finds the LSP binary in this order:
 | `elm-lsp.restartServer` | Restart the language server |
 | `elm-lsp.moveFunction` | Move function to another module |
 | `elm-lsp.generateErd` | Generate ER diagram from type |
+
+## Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `elm-lsp.server.path` | `""` | Custom path to elm_lsp binary |
+| `elm-lsp.codeLens.references` | `true` | Show reference counts above definitions |
 
 ## Publishing
 
