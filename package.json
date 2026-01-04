@@ -2,7 +2,7 @@
   "name": "vscode-elm-lsp",
   "displayName": "Elm LSP",
   "description": "Elm language support powered by elm-lsp-rust - fast, accurate, with rename refactoring",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "CharlonTank",
   "icon": "images/icon.png",
   "repository": {

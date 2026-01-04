@@ -15,6 +15,19 @@ let outputChannel: vscode.OutputChannel | undefined;
 let isRestarting = false;
 let codeLensProvider: vscode.Disposable | undefined;
 
+// Symbol info from flat format (SymbolInformation)
+interface SymbolInfo {
+    name: string;
+    kind: vscode.SymbolKind;
+    location: {
+        uri: string;
+        range: {
+            start: { line: number; character: number };
+            end: { line: number; character: number };
+        };
+    };
+}
+
 class ElmReferencesCodeLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
     public readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
@@ -34,47 +47,41 @@ class ElmReferencesCodeLensProvider implements vscode.CodeLensProvider {
         }
 
         try {
-            const symbols = await client.sendRequest('textDocument/documentSymbol', {
+            const response = await client.sendRequest('textDocument/documentSymbol', {
                 textDocument: { uri: document.uri.toString() }
-            }) as vscode.DocumentSymbol[] | null;
+            });
 
-            if (!symbols) return [];
+            if (!response) return [];
 
             const codeLenses: vscode.CodeLens[] = [];
-            this.collectCodeLenses(symbols, codeLenses, document);
+
+            // Handle flat format (SymbolInformation[])
+            if (Array.isArray(response) && response.length > 0 && 'location' in response[0]) {
+                const symbols = response as SymbolInfo[];
+                for (const symbol of symbols) {
+                    // Only show references for functions, types, and type aliases
+                    if (symbol.kind === vscode.SymbolKind.Function ||
+                        symbol.kind === vscode.SymbolKind.Class ||
+                        symbol.kind === vscode.SymbolKind.Struct ||
+                        symbol.kind === vscode.SymbolKind.Enum ||
+                        symbol.kind === vscode.SymbolKind.Interface) {
+
+                        const range = new vscode.Range(
+                            symbol.location.range.start.line,
+                            symbol.location.range.start.character,
+                            symbol.location.range.end.line,
+                            symbol.location.range.end.character
+                        );
+
+                        codeLenses.push(new vscode.CodeLens(range, undefined));
+                    }
+                }
+            }
+
             return codeLenses;
         } catch (e) {
+            outputChannel?.appendLine(`CodeLens error: ${e}`);
             return [];
-        }
-    }
-
-    private collectCodeLenses(
-        symbols: vscode.DocumentSymbol[],
-        codeLenses: vscode.CodeLens[],
-        document: vscode.TextDocument
-    ): void {
-        for (const symbol of symbols) {
-            // Only show references for functions, types, and type aliases
-            if (symbol.kind === vscode.SymbolKind.Function ||
-                symbol.kind === vscode.SymbolKind.Class ||
-                symbol.kind === vscode.SymbolKind.Struct ||
-                symbol.kind === vscode.SymbolKind.Enum ||
-                symbol.kind === vscode.SymbolKind.Interface) {
-
-                const range = new vscode.Range(
-                    symbol.selectionRange.start.line,
-                    symbol.selectionRange.start.character,
-                    symbol.selectionRange.end.line,
-                    symbol.selectionRange.end.character
-                );
-
-                codeLenses.push(new vscode.CodeLens(range, undefined));
-            }
-
-            // Recurse into children
-            if (symbol.children) {
-                this.collectCodeLenses(symbol.children, codeLenses, document);
-            }
         }
     }
 
