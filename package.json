@@ -2,7 +2,7 @@
   "name": "vscode-elm-lsp",
   "displayName": "Elm LSP",
   "description": "Elm language support powered by elm-lsp-rust - fast, accurate, with rename refactoring",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "CharlonTank",
   "icon": "images/icon.png",
   "repository": {
@@ -71,6 +71,11 @@
           ],
           "default": "off",
           "description": "Traces the communication between VS Code and the Elm language server."
+        },
+        "elm-lsp.codeLens.references": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show reference counts above function and type definitions."
         }
       }
     },

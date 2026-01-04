@@ -13,6 +13,113 @@ import {
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 let isRestarting = false;
+let codeLensProvider: vscode.Disposable | undefined;
+
+class ElmReferencesCodeLensProvider implements vscode.CodeLensProvider {
+    private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
+    public readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
+
+    public refresh(): void {
+        this._onDidChangeCodeLenses.fire();
+    }
+
+    async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
+        if (!client || document.languageId !== 'elm') {
+            return [];
+        }
+
+        const config = vscode.workspace.getConfiguration('elm-lsp');
+        if (!config.get<boolean>('codeLens.references', true)) {
+            return [];
+        }
+
+        try {
+            const symbols = await client.sendRequest('textDocument/documentSymbol', {
+                textDocument: { uri: document.uri.toString() }
+            }) as vscode.DocumentSymbol[] | null;
+
+            if (!symbols) return [];
+
+            const codeLenses: vscode.CodeLens[] = [];
+            this.collectCodeLenses(symbols, codeLenses, document);
+            return codeLenses;
+        } catch (e) {
+            return [];
+        }
+    }
+
+    private collectCodeLenses(
+        symbols: vscode.DocumentSymbol[],
+        codeLenses: vscode.CodeLens[],
+        document: vscode.TextDocument
+    ): void {
+        for (const symbol of symbols) {
+            // Only show references for functions, types, and type aliases
+            if (symbol.kind === vscode.SymbolKind.Function ||
+                symbol.kind === vscode.SymbolKind.Class ||
+                symbol.kind === vscode.SymbolKind.Struct ||
+                symbol.kind === vscode.SymbolKind.Enum ||
+                symbol.kind === vscode.SymbolKind.Interface) {
+
+                const range = new vscode.Range(
+                    symbol.selectionRange.start.line,
+                    symbol.selectionRange.start.character,
+                    symbol.selectionRange.end.line,
+                    symbol.selectionRange.end.character
+                );
+
+                codeLenses.push(new vscode.CodeLens(range, undefined));
+            }
+
+            // Recurse into children
+            if (symbol.children) {
+                this.collectCodeLenses(symbol.children, codeLenses, document);
+            }
+        }
+    }
+
+    async resolveCodeLens(codeLens: vscode.CodeLens): Promise<vscode.CodeLens> {
+        if (!client) {
+            codeLens.command = { title: '', command: '' };
+            return codeLens;
+        }
+
+        const document = vscode.window.activeTextEditor?.document;
+        if (!document) {
+            codeLens.command = { title: '', command: '' };
+            return codeLens;
+        }
+
+        try {
+            const references = await client.sendRequest('textDocument/references', {
+                textDocument: { uri: document.uri.toString() },
+                position: {
+                    line: codeLens.range.start.line,
+                    character: codeLens.range.start.character
+                },
+                context: { includeDeclaration: false }
+            }) as vscode.Location[] | null;
+
+            const count = references?.length ?? 0;
+            const title = count === 1 ? '1 reference' : `${count} references`;
+
+            codeLens.command = {
+                title,
+                command: count > 0 ? 'editor.action.findReferences' : '',
+                arguments: count > 0 ? [
+                    document.uri,
+                    new vscode.Position(codeLens.range.start.line, codeLens.range.start.character)
+                ] : undefined
+            };
+        } catch (e) {
+            codeLens.command = { title: '', command: '' };
+        }
+
+        return codeLens;
+    }
+}
+
+const codeLensProviderInstance = new ElmReferencesCodeLensProvider();
 
 const GITHUB_REPO = 'CharlonTank/elm-lsp-rust';
 const BINARY_NAME = process.platform === 'win32' ? 'elm_lsp.exe' : 'elm_lsp';
@@ -212,6 +319,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
         await startLanguageClient(context, serverPath);
         vscode.window.showInformationMessage('Elm LSP started');
+
+        // Register CodeLens provider for references
+        codeLensProvider = vscode.languages.registerCodeLensProvider(
+            { language: 'elm', scheme: 'file' },
+            codeLensProviderInstance
+        );
+        context.subscriptions.push(codeLensProvider);
+
+        // Refresh CodeLens when documents change
+        context.subscriptions.push(
+            vscode.workspace.onDidChangeTextDocument(() => {
+                codeLensProviderInstance.refresh();
+            })
+        );
     } catch (e) {
         vscode.window.showErrorMessage(`Failed to start Elm LSP: ${e}`);
         return;
